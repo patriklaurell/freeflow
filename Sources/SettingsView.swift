@@ -408,7 +408,7 @@ struct SettingsView: View {
     var body: some View {
         HStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 2) {
-                ForEach(SettingsTab.visibleCases) { tab in
+                ForEach(SettingsTab.visibleCases.filter { !LocalDictationBuild.isEnabled || $0 != .prompts }) { tab in
                     Button {
                         appState.selectedSettingsTab = tab
                     } label: {
@@ -592,104 +592,106 @@ struct GeneralSettingsView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
-                    // GitHub card
-                    VStack(spacing: 10) {
-                        HStack(spacing: 8) {
-                            AsyncImage(url: URL(string: "https://avatars.githubusercontent.com/u/992248")) { phase in
-                                switch phase {
-                                case .success(let image):
-                                    image.resizable().aspectRatio(contentMode: .fill)
-                                default:
-                                    Color.gray.opacity(0.2)
-                                }
-                            }
-                            .frame(width: 22, height: 22)
-                            .clipShape(Circle())
-
-                            Button {
-                                openURL(freeflowRepoURL)
-                            } label: {
-                                Text("zachlatta/freeflow")
-                                    .font(.system(.caption, design: .monospaced).weight(.medium))
-                            }
-                            .buttonStyle(.plain)
-                            .foregroundStyle(.blue)
-
-                            Spacer()
-
-                            HStack(spacing: 4) {
-                                Image(systemName: "star.fill")
-                                    .foregroundStyle(.yellow)
-                                    .font(.caption2)
-                                if githubCache.isLoading {
-                                    ProgressView().scaleEffect(0.5)
-                                } else if let count = githubCache.starCount {
-                                    Text("\(count.formatted()) \(count == 1 ? "star" : "stars")")
-                                        .font(.caption2.weight(.semibold))
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(Capsule().fill(Color.yellow.opacity(0.14)))
-
-                            Button {
-                                openURL(freeflowRepoURL)
-                            } label: {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "star")
-                                    Text("Star")
-                                }
-                                .font(.caption.weight(.semibold))
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 5)
-                                .background(Capsule().fill(Color.yellow.opacity(0.18)))
-                            }
-                            .buttonStyle(.plain)
-                        }
-
-                        if !githubCache.recentStargazers.isEmpty {
-                            Divider()
+                    if !LocalDictationBuild.isEnabled {
+                        // GitHub card
+                        VStack(spacing: 10) {
                             HStack(spacing: 8) {
-                                HStack(spacing: -6) {
-                                    ForEach(githubCache.recentStargazers) { star in
-                                        Button {
-                                            openURL(star.user.htmlUrl)
-                                        } label: {
-                                            AsyncImage(url: star.user.avatarThumbnailUrl) { phase in
-                                                switch phase {
-                                                case .success(let image):
-                                                    image.resizable().aspectRatio(contentMode: .fill)
-                                                default:
-                                                    Color.gray.opacity(0.2)
-                                                }
-                                            }
-                                            .frame(width: 22, height: 22)
-                                            .clipShape(Circle())
-                                            .overlay(Circle().stroke(Color(nsColor: .windowBackgroundColor), lineWidth: 1.5))
-                                        }
-                                        .buttonStyle(.plain)
+                                AsyncImage(url: URL(string: "https://avatars.githubusercontent.com/u/992248")) { phase in
+                                    switch phase {
+                                    case .success(let image):
+                                        image.resizable().aspectRatio(contentMode: .fill)
+                                    default:
+                                        Color.gray.opacity(0.2)
                                     }
                                 }
-                                .clipped()
-                                Text("recently starred")
-                                    .font(.caption2)
-                                    .foregroundStyle(.tertiary)
-                                    .fixedSize()
+                                .frame(width: 22, height: 22)
+                                .clipShape(Circle())
+
+                                Button {
+                                    openURL(freeflowRepoURL)
+                                } label: {
+                                    Text("zachlatta/freeflow")
+                                        .font(.system(.caption, design: .monospaced).weight(.medium))
+                                }
+                                .buttonStyle(.plain)
+                                .foregroundStyle(.blue)
+
                                 Spacer()
+
+                                HStack(spacing: 4) {
+                                    Image(systemName: "star.fill")
+                                        .foregroundStyle(.yellow)
+                                        .font(.caption2)
+                                    if githubCache.isLoading {
+                                        ProgressView().scaleEffect(0.5)
+                                    } else if let count = githubCache.starCount {
+                                        Text("\(count.formatted()) \(count == 1 ? "star" : "stars")")
+                                            .font(.caption2.weight(.semibold))
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Capsule().fill(Color.yellow.opacity(0.14)))
+
+                                Button {
+                                    openURL(freeflowRepoURL)
+                                } label: {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "star")
+                                        Text("Star")
+                                    }
+                                    .font(.caption.weight(.semibold))
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 5)
+                                    .background(Capsule().fill(Color.yellow.opacity(0.18)))
+                                }
+                                .buttonStyle(.plain)
                             }
-                            .clipped()
+
+                            if !githubCache.recentStargazers.isEmpty {
+                                Divider()
+                                HStack(spacing: 8) {
+                                    HStack(spacing: -6) {
+                                        ForEach(githubCache.recentStargazers) { star in
+                                            Button {
+                                                openURL(star.user.htmlUrl)
+                                            } label: {
+                                                AsyncImage(url: star.user.avatarThumbnailUrl) { phase in
+                                                    switch phase {
+                                                    case .success(let image):
+                                                        image.resizable().aspectRatio(contentMode: .fill)
+                                                    default:
+                                                        Color.gray.opacity(0.2)
+                                                    }
+                                                }
+                                                .frame(width: 22, height: 22)
+                                                .clipShape(Circle())
+                                                .overlay(Circle().stroke(Color(nsColor: .windowBackgroundColor), lineWidth: 1.5))
+                                            }
+                                            .buttonStyle(.plain)
+                                        }
+                                    }
+                                    .clipped()
+                                    Text("recently starred")
+                                        .font(.caption2)
+                                        .foregroundStyle(.tertiary)
+                                        .fixedSize()
+                                    Spacer()
+                                }
+                                .clipped()
+                            }
                         }
+                        .padding(12)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(.ultraThinMaterial)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                                )
+                        )
                     }
-                    .padding(12)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(.ultraThinMaterial)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .stroke(Color.primary.opacity(0.08), lineWidth: 1)
-                            )
-                    )
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.top, 4)
@@ -698,14 +700,28 @@ struct GeneralSettingsView: View {
                 SettingsCard("App", icon: "power") {
                     startupSection
                 }
-                SettingsCard("Updates", icon: "arrow.triangle.2.circlepath") {
-                    updatesSection
-                }
-                SettingsCard("API Key", icon: "key.fill") {
-                    apiKeySection
-                }
-                SettingsCard("Output Language", icon: "globe") {
-                    outputLanguageSection
+                if LocalDictationBuild.isEnabled {
+                    SettingsCard("Local Transcription", icon: "waveform") {
+                        Text("Parakeet TDT 0.6B v3 automatically detects the spoken language.")
+                        #if FREEFLOW_LOCAL
+                        LocalModelSettingsView(model: LocalModelCatalog.parakeet)
+                        LocalModelSettingsView(model: LocalModelCatalog.qwen)
+                        LocalCleanupSettingsView()
+                        Text(LocalFileTranscriptionService.modelDirectory.path)
+                            .font(.caption)
+                            .textSelection(.enabled)
+                        #endif
+                    }
+                } else {
+                    SettingsCard("Updates", icon: "arrow.triangle.2.circlepath") {
+                        updatesSection
+                    }
+                    SettingsCard("API Key", icon: "key.fill") {
+                        apiKeySection
+                    }
+                    SettingsCard("Output Language", icon: "globe") {
+                        outputLanguageSection
+                    }
                 }
                 SettingsCard("Dictation Shortcuts", icon: "keyboard.fill") {
                     hotkeySection
@@ -716,11 +732,13 @@ struct GeneralSettingsView: View {
                 SettingsCard("Recording Overlay", icon: "rectangle.dashed") {
                     overlaySection
                 }
-                SettingsCard("Edit Mode", icon: "pencil") {
-                    commandModeSection
-                }
-                SettingsCard("Cleanup", icon: "sparkles") {
-                    cleanupSection
+                if !LocalDictationBuild.isEnabled {
+                    SettingsCard("Edit Mode", icon: "pencil") {
+                        commandModeSection
+                    }
+                    SettingsCard("Cleanup", icon: "sparkles") {
+                        cleanupSection
+                    }
                 }
                 SettingsCard("Text insertion", icon: "text.cursor") {
                     textInsertionSection
@@ -734,6 +752,11 @@ struct GeneralSettingsView: View {
                 SettingsCard("Sound Volume", icon: "speaker.wave.2.fill") {
                     soundVolumeSection
                 }
+                #if FREEFLOW_LOCAL
+                SettingsCard("Learned Vocabulary", icon: "text.book.closed.fill") {
+                    LocalVocabularyView()
+                }
+                #endif
                 SettingsCard("Custom Vocabulary", icon: "text.book.closed.fill") {
                     vocabularySection
                 }
@@ -754,7 +777,9 @@ struct GeneralSettingsView: View {
             customVocabularyInput = appState.customVocabulary
             checkMicPermission()
             appState.refreshLaunchAtLoginStatus()
-            Task { await githubCache.fetchIfNeeded() }
+            if !LocalDictationBuild.isEnabled {
+                Task { await githubCache.fetchIfNeeded() }
+            }
         }
         .onDisappear {
             apiDraft.dismiss()
@@ -1507,6 +1532,7 @@ struct GeneralSettingsView: View {
                 }
             )
 
+            if !LocalDictationBuild.isEnabled {
             permissionRow(
                 title: "Screen Recording",
                 icon: "camera.viewfinder",
@@ -1515,6 +1541,7 @@ struct GeneralSettingsView: View {
                     appState.requestScreenCapturePermission()
                 }
             )
+            }
         }
     }
 
@@ -1838,6 +1865,7 @@ struct PromptsSettingsView: View {
     }
 
     private func runSystemPromptTest() {
+        guard !LocalDictationBuild.isEnabled else { return }
         commitCustomSystemPrompt()
         systemTestRunning = true
         systemTestOutput = nil

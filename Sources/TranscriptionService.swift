@@ -45,7 +45,11 @@ enum APIConfigurationSaveFlow {
     }
 }
 
-class TranscriptionService {
+protocol FileTranscriptionService {
+    func transcribe(fileURL: URL) async throws -> String
+}
+
+class TranscriptionService: FileTranscriptionService {
     private static let modelsSupportingVerboseJSON: Set<String> = [
         // OpenAI's Whisper model supports segment metadata. The newer
         // gpt-4o-transcribe family only supports the plain JSON format.

@@ -15,6 +15,8 @@ TEST_RUNNER = $(BUILD_DIR)/FreeFlowTests
 TEST_CONTEXT_HARNESS = $(BUILD_DIR)/ContextCaptureHarness.swift
 TEST_DISPATCH_HARNESS = $(BUILD_DIR)/AppTextInsertionDispatchHarness.swift
 TEST_PRODUCTION_SOURCES = \
+	LocalCleanup/CleanupPolicy.swift \
+	LocalASR/WordErrorRate.swift \
 	Sources/APIConfigurationDraft.swift \
 	Sources/AppContextService.swift \
 	Sources/AppName.swift \
@@ -23,6 +25,10 @@ TEST_PRODUCTION_SOURCES = \
 	Sources/ContextInferenceFailure.swift \
 	Sources/LLMAPITransport.swift \
 	Sources/LLMCooldownManager.swift \
+	Sources/LearnedVocabulary.swift \
+	Sources/LocalModelCatalog.swift \
+	Sources/LocalModelInstaller.swift \
+	Sources/LocalDictationBuild.swift \
 	Sources/ModelConfiguration.swift \
 	Sources/OriginalFieldInsertionPreference.swift \
 	Sources/PostProcessingService.swift \
@@ -38,10 +44,12 @@ TEST_PRODUCTION_SOURCES = \
 	Sources/ShortcutCore/ShortcutMatcher.swift \
 	Sources/ShortcutCore/ShortcutModels.swift
 TEST_SOURCES = $(shell find Tests -name '*.swift' -type f | LC_ALL=C sort)
-SHELL_SCRIPTS = $(shell find .github/scripts .agents/skills -name '*.sh' -type f | LC_ALL=C sort)
+SHELL_SCRIPTS = $(wildcard scripts/*.sh) $(shell find .github/scripts .agents/skills -name '*.sh' -type f | LC_ALL=C sort)
 YAML_FILES = $(shell find .github -type f \( -name '*.yml' -o -name '*.yaml' \) | LC_ALL=C sort)
 RESOURCES = $(CONTENTS)/Resources
 ARCH ?= $(shell uname -m)
+SWIFT_FLAGS ?=
+SWIFTPM_FLAGS ?=
 
 # Pick the icon source based on which bundle we are building. Dev builds get
 # a distinct hammer-on-waveform icon so a developer's dock shows at a glance
@@ -54,20 +62,32 @@ ICON_SOURCE = Resources/AppIcon-Source.png
 ICON_ICNS = Resources/AppIcon.icns
 endif
 
-.PHONY: all check clean run icon dmg codesign-dmg notarize test typecheck validate
+.PHONY: all local check clean run icon dmg codesign-dmg notarize test typecheck validate
 
 all: $(APP_EXECUTABLE_TARGET)
 
-$(APP_EXECUTABLE_TARGET): $(SOURCES) Info.plist $(ICON_ICNS)
+local:
+	$(MAKE) all LOCAL=1 ARCH=arm64 APP_NAME="FreeFlow Local" BUNDLE_ID=com.zachlatta.freeflow.local
+
+ifeq ($(LOCAL),1)
+LOCAL_BUILD_INPUTS = scripts/package-local-resources.sh Package.swift Package.resolved $(wildcard LocalASR/*.swift) $(wildcard LocalCleanup/*.swift)
+endif
+
+$(APP_EXECUTABLE_TARGET): $(SOURCES) Info.plist FreeFlow.entitlements Makefile $(ICON_ICNS) $(LOCAL_BUILD_INPUTS)
 	@mkdir -p "$(MACOS_DIR)" "$(RESOURCES)"
-ifeq ($(ARCH),universal)
-	swiftc \
+ifeq ($(LOCAL),1)
+	swift build --build-system swiftbuild $(SWIFTPM_FLAGS) -c release --arch arm64 --product FreeFlowLocal
+	@set -e; bin_dir="$$(swift build --build-system swiftbuild $(SWIFTPM_FLAGS) -c release --arch arm64 --show-bin-path)"; \
+		./scripts/package-local-resources.sh "$$bin_dir" "$(RESOURCES)" .build/checkouts; \
+		cp "$$bin_dir/FreeFlowLocal" "$(APP_EXECUTABLE)"
+else ifeq ($(ARCH),universal)
+	swiftc $(SWIFT_FLAGS) \
 		-parse-as-library \
 		-o "$(MACOS_DIR)/$(APP_NAME)-arm64" \
 		-sdk $(shell xcrun --show-sdk-path) \
 		-target arm64-apple-macosx13.0 \
 		$(SOURCES)
-	swiftc \
+	swiftc $(SWIFT_FLAGS) \
 		-parse-as-library \
 		-o "$(MACOS_DIR)/$(APP_NAME)-x86_64" \
 		-sdk $(shell xcrun --show-sdk-path) \
@@ -78,7 +98,7 @@ ifeq ($(ARCH),universal)
 		"$(MACOS_DIR)/$(APP_NAME)-x86_64"
 	@rm "$(MACOS_DIR)/$(APP_NAME)-arm64" "$(MACOS_DIR)/$(APP_NAME)-x86_64"
 else
-	swiftc \
+	swiftc $(SWIFT_FLAGS) \
 		-parse-as-library \
 		-o "$(MACOS_DIR)/$(APP_NAME)" \
 		-sdk $(shell xcrun --show-sdk-path) \
@@ -86,6 +106,9 @@ else
 		$(SOURCES)
 endif
 	@cp Info.plist "$(CONTENTS)/"
+ifeq ($(LOCAL),1)
+	@plutil -replace LSMinimumSystemVersion -string "14.0" "$(CONTENTS)/Info.plist"
+endif
 	@plutil -replace CFBundleName -string "$(APP_NAME)" "$(CONTENTS)/Info.plist"
 	@plutil -replace CFBundleDisplayName -string "$(APP_NAME)" "$(CONTENTS)/Info.plist"
 	@plutil -replace CFBundleExecutable -string "$(APP_NAME)" "$(CONTENTS)/Info.plist"
@@ -100,7 +123,7 @@ endif
 check: typecheck test validate
 
 typecheck:
-	swiftc \
+	swiftc $(SWIFT_FLAGS) \
 		-parse-as-library \
 		-typecheck \
 		-warnings-as-errors \
@@ -118,7 +141,7 @@ $(TEST_DISPATCH_HARNESS): Sources/AppState.swift Tests/generate-insertion-dispat
 
 test: $(TEST_CONTEXT_HARNESS) $(TEST_DISPATCH_HARNESS)
 	@mkdir -p "$(BUILD_DIR)"
-	swiftc \
+	swiftc $(SWIFT_FLAGS) \
 		-parse-as-library \
 		-warnings-as-errors \
 		-o "$(TEST_RUNNER)" \

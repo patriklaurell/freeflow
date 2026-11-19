@@ -104,7 +104,6 @@ struct SetupView: View {
     @StateObject private var testHotkeyHarness = SetupTestHotkeyHarness()
     @AppStorage("use_compact_overlay") private var useCompactOverlay = true
 
-    private let totalSteps: [SetupStep] = SetupStep.allCases
     private var isCapturingShortcut: Bool {
         isCapturingHoldShortcut || isCapturingToggleShortcut || isCapturingCopyAgainShortcut
     }
@@ -198,8 +197,10 @@ struct SetupView: View {
             customVocabularyInput = appState.customVocabulary
             checkMicPermission()
             checkAccessibility()
-            Task {
-                await githubCache.fetchIfNeeded()
+            if !LocalDictationBuild.isEnabled {
+                Task {
+                    await githubCache.fetchIfNeeded()
+                }
             }
         }
         .onDisappear {
@@ -285,105 +286,111 @@ struct SetupView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            VStack(spacing: 10) {
-                HStack(spacing: 8) {
-                    AsyncImage(url: URL(string: "https://avatars.githubusercontent.com/u/992248")) { phase in
-                        switch phase {
-                        case .success(let image):
-                            image.resizable().aspectRatio(contentMode: .fill)
-                        default:
-                            Color.gray.opacity(0.2)
-                        }
-                    }
-                    .frame(width: 26, height: 26)
-                    .clipShape(Circle())
-
-                    Button {
-                        openURL(freeflowRepoURL)
-                    } label: {
-                        Text("zachlatta/freeflow")
-                            .font(.system(.caption, design: .monospaced).weight(.medium))
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.blue)
-
-                    Spacer()
-
-                    HStack(spacing: 4) {
-                        Image(systemName: "star.fill")
-                            .foregroundStyle(.yellow)
-                            .font(.caption2)
-                        if githubCache.isLoading {
-                            ProgressView().scaleEffect(0.5)
-                        } else if let count = githubCache.starCount {
-                            Text("\(count.formatted()) \(count == 1 ? "star" : "stars")")
-                                .font(.caption2.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Capsule().fill(Color.yellow.opacity(0.14)))
-
-                    Button {
-                        openURL(freeflowRepoURL)
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "star")
-                            Text("Star")
-                        }
-                        .font(.caption.weight(.semibold))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .background(Capsule().fill(Color.yellow.opacity(0.18)))
-                    }
-                    .buttonStyle(.plain)
-                }
-
-                if !githubCache.recentContributors.isEmpty {
-                    Divider()
+            if LocalDictationBuild.isEnabled {
+                Text("Dictation uses Parakeet v3 on this Mac. Place the model files in the folder shown under Settings → Local Transcription before recording.")
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(.secondary)
+            } else {
+                VStack(spacing: 10) {
                     HStack(spacing: 8) {
-                        HStack(spacing: -6) {
-                            ForEach(githubCache.recentContributors) { contributor in
-                                Button {
-                                    openURL(contributor.htmlUrl)
-                                } label: {
-                                    AsyncImage(url: contributor.avatarThumbnailUrl) { phase in
-                                        switch phase {
-                                        case .success(let image):
-                                            image.resizable().aspectRatio(contentMode: .fill)
-                                        default:
-                                            Color.gray.opacity(0.2)
-                                        }
-                                    }
-                                    .frame(width: 22, height: 22)
-                                    .clipShape(Circle())
-                                    .overlay(Circle().stroke(Color(nsColor: .windowBackgroundColor), lineWidth: 1.5))
-                                }
-                                .buttonStyle(.plain)
-                                .accessibilityLabel(Text(contributor.login))
-                                .accessibilityHint(Text("Open contributor profile"))
+                        AsyncImage(url: URL(string: "https://avatars.githubusercontent.com/u/992248")) { phase in
+                            switch phase {
+                            case .success(let image):
+                                image.resizable().aspectRatio(contentMode: .fill)
+                            default:
+                                Color.gray.opacity(0.2)
                             }
                         }
-                        .clipped()
-                        Text("recent contributors")
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                            .fixedSize()
+                        .frame(width: 26, height: 26)
+                        .clipShape(Circle())
+
+                        Button {
+                            openURL(freeflowRepoURL)
+                        } label: {
+                            Text("zachlatta/freeflow")
+                                .font(.system(.caption, design: .monospaced).weight(.medium))
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.blue)
+
                         Spacer()
+
+                        HStack(spacing: 4) {
+                            Image(systemName: "star.fill")
+                                .foregroundStyle(.yellow)
+                                .font(.caption2)
+                            if githubCache.isLoading {
+                                ProgressView().scaleEffect(0.5)
+                            } else if let count = githubCache.starCount {
+                                Text("\(count.formatted()) \(count == 1 ? "star" : "stars")")
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Capsule().fill(Color.yellow.opacity(0.14)))
+
+                        Button {
+                            openURL(freeflowRepoURL)
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "star")
+                                Text("Star")
+                            }
+                            .font(.caption.weight(.semibold))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(Capsule().fill(Color.yellow.opacity(0.18)))
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .clipped()
+
+                    if !githubCache.recentContributors.isEmpty {
+                        Divider()
+                        HStack(spacing: 8) {
+                            HStack(spacing: -6) {
+                                ForEach(githubCache.recentContributors) { contributor in
+                                    Button {
+                                        openURL(contributor.htmlUrl)
+                                    } label: {
+                                        AsyncImage(url: contributor.avatarThumbnailUrl) { phase in
+                                            switch phase {
+                                            case .success(let image):
+                                                image.resizable().aspectRatio(contentMode: .fill)
+                                            default:
+                                                Color.gray.opacity(0.2)
+                                            }
+                                        }
+                                        .frame(width: 22, height: 22)
+                                        .clipShape(Circle())
+                                        .overlay(Circle().stroke(Color(nsColor: .windowBackgroundColor), lineWidth: 1.5))
+                                    }
+                                    .buttonStyle(.plain)
+                                    .accessibilityLabel(Text(contributor.login))
+                                    .accessibilityHint(Text("Open contributor profile"))
+                                }
+                            }
+                            .clipped()
+                            Text("recent contributors")
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                                .fixedSize()
+                            Spacer()
+                        }
+                        .clipped()
+                    }
                 }
+                .padding(12)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(.ultraThinMaterial)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                        )
+                )
             }
-            .padding(12)
-            .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(.ultraThinMaterial)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12)
-                            .stroke(Color.primary.opacity(0.08), lineWidth: 1)
-                    )
-            )
 
         }
     }
@@ -1078,7 +1085,7 @@ struct SetupView: View {
 
     var stepIndicator: some View {
         HStack(spacing: 8) {
-            ForEach(totalSteps, id: \.rawValue) { step in
+            ForEach(setupSteps, id: \.rawValue) { step in
                 Circle()
                     .fill(step == currentStep ? Color.blue : Color.gray.opacity(0.3))
                     .frame(width: 8, height: 8)
@@ -1178,14 +1185,17 @@ struct SetupView: View {
         }
     }
 
+    private var setupSteps: [SetupStep] {
+        guard LocalDictationBuild.isEnabled else { return SetupStep.allCases }
+        return SetupStep.allCases.filter { ![.apiKey, .screenRecording, .commandMode, .vocabulary].contains($0) }
+    }
+
     private func previousStep(_ step: SetupStep) -> SetupStep {
-        let previous = SetupStep(rawValue: step.rawValue - 1)
-        return previous ?? .welcome
+        setupSteps.last { $0.rawValue < step.rawValue } ?? .welcome
     }
 
     private func nextStep(_ step: SetupStep) -> SetupStep {
-        let next = SetupStep(rawValue: step.rawValue + 1)
-        return next ?? .ready
+        setupSteps.first { $0.rawValue > step.rawValue } ?? .ready
     }
 
     func checkMicPermission() {

@@ -6,7 +6,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var settingsWindow: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NetworkMonitor.shared.start()
+        if !LocalDictationBuild.isEnabled { NetworkMonitor.shared.start() }
 
         NotificationCenter.default.addObserver(
             self,

@@ -180,13 +180,15 @@ struct MenuBarView: View {
 
             Divider()
 
-            Button("Paste Custom Word to Vocabulary") {
-                if appState.pasteWordToVocabulary() != nil {
-                    VocabularyNotificationManager.shared.flashCheckmark()
+            if !LocalDictationBuild.isEnabled {
+                Button("Paste Custom Word to Vocabulary") {
+                    if appState.pasteWordToVocabulary() != nil {
+                        VocabularyNotificationManager.shared.flashCheckmark()
+                    }
                 }
-            }
 
-            Divider()
+                Divider()
+            }
 
             Menu("Hold Shortcut") {
                 Button {
@@ -351,20 +353,22 @@ struct MenuBarView: View {
                 NotificationCenter.default.post(name: .showSettings, object: nil)
             }
 
-            Button {
-                Task {
-                    await updateManager.checkForUpdates(userInitiated: true)
-                }
-            } label: {
-                HStack(spacing: 6) {
-                    if updateManager.isChecking {
-                        ProgressView()
-                            .controlSize(.small)
+            if !LocalDictationBuild.isEnabled {
+                Button {
+                    Task {
+                        await updateManager.checkForUpdates(userInitiated: true)
                     }
-                    Text(updateManager.isChecking ? "Checking for Updates..." : "Check for Updates")
+                } label: {
+                    HStack(spacing: 6) {
+                        if updateManager.isChecking {
+                            ProgressView()
+                                .controlSize(.small)
+                        }
+                        Text(updateManager.isChecking ? "Checking for Updates..." : "Check for Updates")
+                    }
                 }
+                .disabled(updateManager.isChecking)
             }
-            .disabled(updateManager.isChecking)
 
             if updateManager.updateAvailable {
                 Divider()
