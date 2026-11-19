@@ -3,6 +3,10 @@ import Foundation
 @main
 struct FreeFlowTests {
     static func main() async {
+        LearnedVocabularyTests.run()
+        await LocalModelInstallerTests.run()
+        CleanupPolicyTests.run()
+        WordErrorRateTests.run()
         await AppContextServiceTests.run()
         await ContextCaptureTests.run()
         await LLMAPITransportTests.run()

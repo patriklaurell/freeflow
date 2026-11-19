@@ -920,6 +920,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
     }
 
     private static func loadStoredAPIKey(account: String) -> String {
+        guard !LocalDictationBuild.isEnabled else { return "" }
         if let storedKey = AppSettingsStorage.load(account: account), !storedKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return storedKey
         }
@@ -958,6 +959,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
     }
 
     private static func loadStoredAPIBaseURL(account: String) -> String {
+        guard !LocalDictationBuild.isEnabled else { return defaultAPIBaseURL }
         if let stored = AppSettingsStorage.load(account: account), !stored.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return stored
         }
@@ -1128,6 +1130,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
     }
 
     private static func loadOptionalStoredAPIValue(account: String) -> String {
+        guard !LocalDictationBuild.isEnabled else { return "" }
         let stored = AppSettingsStorage.load(account: account) ?? ""
         return stored.trimmingCharacters(in: .whitespacesAndNewlines)
     }
@@ -1159,13 +1162,17 @@ final class AppState: ObservableObject, @unchecked Sendable {
         return trimmed.isEmpty ? apiKey : trimmed
     }
 
-    func makeTranscriptionService() throws -> TranscriptionService {
+    func makeTranscriptionService() throws -> any FileTranscriptionService {
+#if FREEFLOW_LOCAL
+        LocalFileTranscriptionService(language: resolvedTranscriptionLanguage)
+#else
         try TranscriptionService(
             apiKey: resolvedTranscriptionAPIKey,
             baseURL: resolvedTranscriptionBaseURL,
             transcriptionModel: transcriptionModel,
             language: resolvedTranscriptionLanguage
         )
+#endif
     }
 
     private var resolvedTranscriptionLanguage: String? {
@@ -1355,6 +1362,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
                     dictationLanguage: Self.dictationLanguageName(for: self.transcriptionLanguage),
                     preserveExactWording: self.preserveExactWording
                 )
+                try Task.checkCancellation()
                 finalTranscript = result.finalTranscript
                 processingStatus = Self.statusMessage(
                     for: result.outcome,
@@ -2084,7 +2092,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
         selectionSnapshot: AppSelectionSnapshot,
         manualCommandRequested: Bool
     ) -> SessionIntent? {
-        guard isCommandModeEnabled else {
+        guard !LocalDictationBuild.isEnabled, isCommandModeEnabled else {
             return .dictation
         }
 
@@ -2403,6 +2411,9 @@ final class AppState: ObservableObject, @unchecked Sendable {
         triggerMode: RecordingTriggerMode,
         cleanupOrigin: ShortcutCleanupSessionOrigin
     ) {
+        #if FREEFLOW_LOCAL
+        Task { @MainActor in LocalVocabularyController.shared.stop() }
+        #endif
         os_log(.info, log: recordingLog, "beginRecording() entered")
         shortcutCleanupSession.start(
             origin: cleanupOrigin,
@@ -2558,7 +2569,10 @@ final class AppState: ObservableObject, @unchecked Sendable {
     }
 
     private func formattedTranscriptionError(_ error: Error) -> String {
-        TranscriptionErrorPresentationCore.message(
+        if LocalDictationBuild.isEnabled {
+            return error.localizedDescription
+        }
+        return TranscriptionErrorPresentationCore.message(
             for: error,
             isOnline: NetworkMonitor.shared.isOnline
         )
@@ -2669,6 +2683,9 @@ final class AppState: ObservableObject, @unchecked Sendable {
 
     private enum TranscriptProcessingOutcome {
         case skippedEmptyRawTranscript
+        case localTranscription
+        case localCleanupSucceeded
+        case localCleanupFailedFallback
         case voiceMacro(command: String)
         case postProcessingSucceeded
         case postProcessingFailedFallback
@@ -2682,6 +2699,12 @@ final class AppState: ObservableObject, @unchecked Sendable {
             switch self {
             case .skippedEmptyRawTranscript:
                 return "Skipped macros and post-processing for empty raw transcript"
+            case .localTranscription:
+                return "Transcribed on device"
+            case .localCleanupSucceeded:
+                return "Transcribed and cleaned up on device"
+            case .localCleanupFailedFallback:
+                return "Local cleanup unavailable or rejected; using raw transcript"
             case .voiceMacro(let command):
                 return "Voice macro used: \(command)"
             case .postProcessingSucceeded:
@@ -2720,6 +2743,29 @@ final class AppState: ObservableObject, @unchecked Sendable {
 
         guard !trimmedRawTranscript.isEmpty else {
             return ("", .skippedEmptyRawTranscript, "")
+        }
+
+        if LocalDictationBuild.isEnabled {
+            if !intent.isCommandMode, let macro = findMatchingMacro(for: trimmedRawTranscript) {
+                return (macro.payload, .voiceMacro(command: macro.command), "")
+            }
+            #if FREEFLOW_LOCAL
+            if !preserveExactWording, UserDefaults.standard.bool(forKey: "local_cleanup_enabled") {
+                let learned = await MainActor.run {
+                    LocalVocabularyController.shared.store.entries.map { "\($0.heard) → \($0.preferred)" }
+                }
+                let manual = customVocabulary.components(separatedBy: CharacterSet(charactersIn: ",;\n"))
+                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+                let cleanup: any TranscriptCleanupService = LocalQwenCleanupService()
+                do {
+                    let cleaned = try await cleanup.clean(trimmedRawTranscript, vocabulary: learned + manual)
+                    return (cleaned, .localCleanupSucceeded, "")
+                } catch {
+                    return (trimmedRawTranscript, .localCleanupFailedFallback, "")
+                }
+            }
+            #endif
+            return (trimmedRawTranscript, .localTranscription, "")
         }
 
         let contextSummaryProvider: (@Sendable () async -> String)?
@@ -2807,7 +2853,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
     /// strict order to avoid paying for both when realtime succeeds.
     private static func resolveRawTranscript(
         realtimeService: RealtimeTranscriptionService?,
-        fileService: TranscriptionService,
+        fileService: any FileTranscriptionService,
         fileURL: URL
     ) async throws -> String {
         if let realtimeService {
@@ -3007,7 +3053,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
 
                         let shouldPersistRawDictationFallback: Bool
                         switch result.outcome {
-                        case .postProcessingFailedFallback,
+                        case .postProcessingFailedFallback, .localCleanupFailedFallback,
                              .preservedExactWordingTranslationFailedFallback:
                             shouldPersistRawDictationFallback = !trimmedFinalTranscript.isEmpty
                         default:
@@ -3153,7 +3199,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
     }
 
     private func startRealtimeStreamingIfEnabled() {
-        guard realtimeStreamingEnabled else { return }
+        guard !LocalDictationBuild.isEnabled, realtimeStreamingEnabled else { return }
         let trimmedBase = resolvedTranscriptionBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedBase.isEmpty else {
             os_log(.info, log: recordingLog, "realtime streaming requested but base URL is empty — skipping")
@@ -3186,7 +3232,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
     }
 
     private func startContextCapture() {
-        guard contextCaptureEnabled else { return }
+        guard !LocalDictationBuild.isEnabled, contextCaptureEnabled else { return }
         contextCaptureTask?.cancel()
         capturedContext = nil
         lastContextSummary = "Collecting app context..."
@@ -3220,7 +3266,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
     private func contextForTranscription(
         _ snapshot: AppContext?, task: Task<AppContext?, Never>?
     ) async -> AppContext {
-        guard contextCaptureEnabled, task?.isCancelled != true else { return Self.disabledContext() }
+        guard !LocalDictationBuild.isEnabled, contextCaptureEnabled, task?.isCancelled != true else { return Self.disabledContext() }
         let context: AppContext?
         if let snapshot {
             context = snapshot
@@ -3516,9 +3562,17 @@ final class AppState: ObservableObject, @unchecked Sendable {
     private func insertTranscriptWhenShortcutReleased(
         _ transcript: String, target: AppTextInsertionTarget?, shouldPressEnter: Bool, useOriginalField: Bool
     ) {
+        #if FREEFLOW_LOCAL
+        Task { @MainActor in LocalVocabularyController.shared.stop() }
+        #endif
         guard useOriginalField else {
             let pendingRestore = writeTranscriptToPasteboard(transcript)
             pasteAtCursorWhenShortcutReleased {
+                #if FREEFLOW_LOCAL
+                if !shouldPressEnter {
+                    Task { @MainActor in LocalVocabularyController.shared.observeInsertion(transcript) }
+                }
+                #endif
                 if shouldPressEnter {
                     self.pressEnterAfterPaste { self.restoreClipboardIfNeeded(pendingRestore) }
                 } else {
@@ -3563,6 +3617,11 @@ final class AppState: ObservableObject, @unchecked Sendable {
                     }
                     return
                 }
+                #if FREEFLOW_LOCAL
+                if !shouldPressEnter {
+                    Task { @MainActor in LocalVocabularyController.shared.observeInsertion(transcript, target: target) }
+                }
+                #endif
                 finish(self.preserveClipboard ? "Pasted at cursor!" : "Copied to clipboard!")
                 if shouldPressEnter {
                     self.pressEnterAfterPaste(target: target) { self.restoreClipboardIfNeeded(pendingRestore) }
@@ -3578,6 +3637,11 @@ final class AppState: ObservableObject, @unchecked Sendable {
                 guard target.identifier == self.textInsertionTargetID else { return }
                 switch insertionResult {
                 case .inserted:
+                    #if FREEFLOW_LOCAL
+                    if !shouldPressEnter {
+                        Task { @MainActor in LocalVocabularyController.shared.observeInsertion(transcript, target: target) }
+                    }
+                    #endif
                     if !self.preserveClipboard || self.keepDictationInClipboardHistory {
                         let pendingRestore = self.writeTranscriptToPasteboard(transcript)
                         self.restoreClipboardIfNeeded(pendingRestore)
@@ -3605,6 +3669,11 @@ final class AppState: ObservableObject, @unchecked Sendable {
                             self.restoreClipboardIfNeeded(pendingRestore)
                             return
                         }
+                        #if FREEFLOW_LOCAL
+                        if !shouldPressEnter {
+                            Task { @MainActor in LocalVocabularyController.shared.observeInsertion(transcript, target: target) }
+                        }
+                        #endif
                         finish("Pasted in original field")
                         if shouldPressEnter {
                             self.pressEnterAfterPaste(target: target) { self.restoreClipboardIfNeeded(pendingRestore) }

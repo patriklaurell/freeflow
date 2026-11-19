@@ -181,6 +181,7 @@ final class UpdateManager: ObservableObject {
     // MARK: - Periodic Checks
 
     func startPeriodicChecks() {
+        guard !LocalDictationBuild.isEnabled else { return }
         // Initial check after 5 second delay
         DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
             guard let self else { return }
@@ -216,6 +217,7 @@ final class UpdateManager: ObservableObject {
 
     @MainActor
     func checkForUpdates(userInitiated: Bool) async {
+        guard !LocalDictationBuild.isEnabled else { return }
         let currentBuildTag = Bundle.main.infoDictionary?["FreeFlowBuildTag"] as? String
         let currentVersionString = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0"
 
